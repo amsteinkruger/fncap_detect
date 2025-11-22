@@ -1,8 +1,9 @@
 # Get packages.
 
 library(tidyverse)
+library(magrittr)
 library(terra)
-library(luna)
+# library(luna)
 library(tidyterra)
 
 # Get administrative boundaries.
@@ -42,24 +43,7 @@ dat_landsat_5 =
 
 dat_landsat_ndvi = (dat_landsat_5 - dat_landsat_4) / (dat_landsat_5 + dat_landsat_4)
 
-dat_landsat_4_1 = dat_landsat_4
-
-dat_landsat_4_2 = 
-  "data/data_landsat/LC08_L1TP_045029_20150718_20200908_02_T1_B4.TIF" %>%
-  rast
-
-dat_landsat_4_3 = 
-  "data/data_landsat/LC08_L1TP_045030_20150702_20200909_02_T1_B4.TIF" %>% 
-  rast
-
 # so we have ####_####_(Path)(Row)_(DateCaptured)_(DateProcessed)_(Collection)_(Tier)_(Band).TIF
-
-# and we want to merge by date
-# then take means over dates up to quarters (but then we have an extent/spatial origin and resolution problem)
-# so double-nest by quarters then dates
-# and check that paths/rows work out
-
-# so find a way to get the spatial origin and resolution out over . . . one Landsat cycle?
 
 #  Wrangling
 
@@ -73,11 +57,51 @@ files_landsat_compressed =
            map(untar,
                exdir = "data/data_landsat"))
 
-files_landsat_read = 
+dat_landsat_read = 
   "data/data_landsat" %>% 
   list.files %>% 
   paste0("data/data_landsat/", .) %>% 
   tibble("path" = .) %>% 
-  filter(str_sub(path, -6, -5) %in% c("B4", "B5"))
+  filter(str_sub(path, -6, -5) %in% c("B4", "B5")) %>% 
+  # Get metadata.
+  mutate(col = path %>% str_sub(29, 31),
+         row = path %>% str_sub(32, 34),
+         date = path %>% str_sub(36, 43) %>% as_date,
+         year = date %>% year,
+         month = date %>% month,
+         day = date %>% day,
+         collection = path %>% str_sub(-12, -11),
+         tier = path %>% str_sub(-9, -8),
+         band = path %>% str_sub(-6, -5)) %>% 
+  # Get data.
+  mutate(dat = path %>% map(rast)) %>%
+  # Cut some data.
+  filter(tier == "T1")
 
+dat_landsat_reference = 
+  dat_landsat_read %>% 
+  group_by(col, row) %>% 
+  filter(date == date %>% min & band == "B4") %>% 
+  ungroup %>% 
+  pull(dat) %>% 
+  sprc %>% 
+  merge
 
+values(dat_landsat_reference) <- NA
+
+dat_landsat = 
+  dat_landsat_read %>% 
+  # filter(row_number() %in% 1:10) %>% 
+  # mutate(dat = dat %>% map(merge, dat_landsat_reference)) %>% 
+  group_by(month, band) %>% 
+  nest %>% 
+  ungroup %>% 
+  mutate(data = 
+           data %>% 
+           map(pull, "dat") %>% 
+           map(sprc) %>% 
+           map(mosaic))
+
+# note that landsat_reference doesn't seem worth keeping so this could all be one pipeline.
+
+# pivot_wider on band, get NDVI, then map Lane County mask, then get (1) plots of raw values by month and (2) change by month
