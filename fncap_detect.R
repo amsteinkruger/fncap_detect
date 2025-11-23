@@ -16,6 +16,8 @@ dat_boundaries =
 
 dat_boundaries_4326 = dat_boundaries %>% project("EPSG:4326")
 
+dat_boundaries_32610 = dat_boundaries %>% project("EPSG:32610")
+
 ext_boundaries = dat_boundaries_4326 %>% ext
 
 # Get FERNS data.
@@ -33,15 +35,15 @@ dat_notifications =
 
 #  Scratch
 
-dat_landsat_4 =
-  "data/data_landsat/LC08_L1TP_046030_20150607_20200909_02_T1_B4.TIF" %>%
-  rast
-
-dat_landsat_5 =
-  "data/data_landsat/LC08_L1TP_046030_20150607_20200909_02_T1_B5.TIF" %>%
-  rast
-
-dat_landsat_ndvi = (dat_landsat_5 - dat_landsat_4) / (dat_landsat_5 + dat_landsat_4)
+# dat_landsat_4 =
+#   "data/data_landsat/LC08_L1TP_046030_20150607_20200909_02_T1_B4.TIF" %>%
+#   rast
+# 
+# dat_landsat_5 =
+#   "data/data_landsat/LC08_L1TP_046030_20150607_20200909_02_T1_B5.TIF" %>%
+#   rast
+# 
+# dat_landsat_ndvi = (dat_landsat_5 - dat_landsat_4) / (dat_landsat_5 + dat_landsat_4)
 
 # so we have ####_####_(Path)(Row)_(DateCaptured)_(DateProcessed)_(Collection)_(Tier)_(Band).TIF
 
@@ -57,7 +59,7 @@ files_landsat_compressed =
            map(untar,
                exdir = "data/data_landsat"))
 
-dat_landsat_read = 
+dat_landsat = 
   "data/data_landsat" %>% 
   list.files %>% 
   paste0("data/data_landsat/", .) %>% 
@@ -76,23 +78,8 @@ dat_landsat_read =
   # Get data.
   mutate(dat = path %>% map(rast)) %>%
   # Cut some data.
-  filter(tier == "T1")
-
-dat_landsat_reference = 
-  dat_landsat_read %>% 
-  group_by(col, row) %>% 
-  filter(date == date %>% min & band == "B4") %>% 
-  ungroup %>% 
-  pull(dat) %>% 
-  sprc %>% 
-  merge
-
-values(dat_landsat_reference) <- NA
-
-dat_landsat = 
-  dat_landsat_read %>% 
-  # filter(row_number() %in% 1:10) %>% 
-  # mutate(dat = dat %>% map(merge, dat_landsat_reference)) %>% 
+  filter(tier == "T1") %>% 
+  # Get a mosaic by month and band.
   group_by(month, band) %>% 
   nest %>% 
   ungroup %>% 
@@ -100,8 +87,15 @@ dat_landsat =
            data %>% 
            map(pull, "dat") %>% 
            map(sprc) %>% 
-           map(mosaic))
+           map(mosaic)) %>% 
+  pivot_wider(names_from = band,
+              values_from = data) %>% 
+  mutate(NDVI = map2(B4, B5, ~ (.y - .x) / (.y + .x)),
+         NDVI_Mask = map(NDVI, ~ mask(.x, dat_boundaries_32610)) %>% map(., trim),
+         NDVI_Mask_Lag = NDVI_Mask %>% lag) %>% 
+  filter(month > min(month)) %>% 
+  mutate(NDVI_Delta = map2(NDVI_Mask, NDVI_Mask_Lag, ~ (.x - .y)))
 
-# note that landsat_reference doesn't seem worth keeping so this could all be one pipeline.
 
-# pivot_wider on band, get NDVI, then map Lane County mask, then get (1) plots of raw values by month and (2) change by month
+
+# get change by month with a divergent color scale
