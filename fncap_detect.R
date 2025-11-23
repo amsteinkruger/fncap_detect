@@ -2,6 +2,7 @@
 
 library(tidyverse)
 library(magrittr)
+library(patchwork)
 library(terra)
 # library(luna)
 library(tidyterra)
@@ -94,8 +95,74 @@ dat_landsat =
          NDVI_Mask = map(NDVI, ~ mask(.x, dat_boundaries_32610)) %>% map(., trim),
          NDVI_Mask_Lag = NDVI_Mask %>% lag) %>% 
   filter(month > min(month)) %>% 
-  mutate(NDVI_Delta = map2(NDVI_Mask, NDVI_Mask_Lag, ~ (.x - .y)))
+  mutate(NDVI_Delta = map2(NDVI_Mask, NDVI_Mask_Lag, ~ (.x - .y))) %>% 
+  select(Month = month, NDVI_Delta)
 
+# Visualization
 
+#  Legend
 
-# get change by month with a divergent color scale
+# min_1 = global(dat_landsat$NDVI_Delta[[1]], min, na.rm = TRUE)
+# min_2 = global(dat_landsat$NDVI_Delta[[2]], min, na.rm = TRUE)
+# min_3 = global(dat_landsat$NDVI_Delta[[3]], min, na.rm = TRUE)
+# min_all = min(min_1, min_2, min_3)
+# 
+# max_1 = global(dat_landsat$NDVI_Delta[[1]], max, na.rm = TRUE)
+# max_2 = global(dat_landsat$NDVI_Delta[[2]], max, na.rm = TRUE)
+# max_3 = global(dat_landsat$NDVI_Delta[[3]], max, na.rm = TRUE)
+# max_all = max(max_1, max_2, max_3)
+
+#  Plot
+
+vis_7 = 
+  ggplot() + 
+  geom_spatraster(data = dat_landsat$NDVI_Delta[[1]] %>% rename(NDVI = 1),
+                  aes(fill = NDVI)) +
+  scale_fill_whitebox_c(limits = c(-1, 1),
+                        breaks = c(-1, 0, 1),
+                        palette = "muted") +
+  labs(title = "June-July 2015",
+       fill = "Change in Mean NDVI") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+vis_8 = 
+  ggplot() + 
+  geom_spatraster(data = dat_landsat$NDVI_Delta[[2]] %>% rename(NDVI = 1),
+                  aes(fill = NDVI)) +
+  scale_fill_whitebox_c(limits = c(-1, 1),
+                        breaks = c(-1, 0, 1),
+                        palette = "muted") +
+  labs(title = "July-August 2015",
+       fill = "Change in Mean NDVI") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+vis_9 = 
+  ggplot() + 
+  geom_spatraster(data = dat_landsat$NDVI_Delta[[3]] %>% rename(NDVI = 1),
+                  aes(fill = NDVI)) +
+  scale_fill_whitebox_c(limits = c(-1, 1),
+                        breaks = c(-1, 0, 1),
+                        palette = "muted") +
+  labs(title = "August-September 2015",
+       fill = "Change in Mean NDVI") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+vis_all = 
+  vis_7 + 
+  vis_8 + 
+  plot_annotation(title = "Changes in Mean NDVI, Lane County, OR") +
+  plot_layout(guides = 'collect') &
+  theme(legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.key.height = unit(0.50, "lines"),
+        legend.key.width = unit(5, "lines"),
+        legend.ticks = element_blank(),
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+ggsave("vis.png",
+       dpi = 300,
+       width = 8)
